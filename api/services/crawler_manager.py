@@ -90,6 +90,33 @@ class CrawlerManager:
             return "debug"
         return "info"
 
+    async def run_once(self, config: CrawlerStartRequest, timeout_seconds: float = 600.0) -> bool:
+        """
+        按给定配置启动一次爬虫，并同步等待结束。
+        - 返回 True 表示进程正常结束且退出码为 0
+        - 返回 False 表示启动失败、超时或退出码非 0
+        """
+        # 先启动
+        started = await self.start(config)
+        if not started:
+            return False
+
+        # 轮询等待进程结束
+        interval = 0.5
+        waited = 0.0
+        while self.process and self.process.poll() is None and waited < timeout_seconds:
+            await asyncio.sleep(interval)
+            waited += interval
+
+        # 超时则尝试停止
+        if self.process and self.process.poll() is None:
+            await self.stop()
+            return False
+
+        # 根据退出码判断成功与否
+        exit_code = self.process.returncode if self.process else -1
+        return exit_code == 0
+
     async def start(self, config: CrawlerStartRequest) -> bool:
         """Start crawler process"""
         async with self._lock:
